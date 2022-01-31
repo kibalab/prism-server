@@ -1,6 +1,6 @@
 {
   "name": "prism-vrc",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "main": "dist/index.js",
   "typings": "types/index.d.ts",
   "repository": "https://github.com/kibalab/prism-server.git",
