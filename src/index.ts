@@ -1,49 +1,49 @@
-import * as fs from 'fs';
-import * as path from 'path';
-
-import EventEmitter from 'events';
-import md5 from 'md5';
-
-import sharp from 'sharp';
-import { path as ffmpegPath } from '@ffmpeg-installer/ffmpeg';
+import { StringToBits, BitsToJPG, BitsToJPGOptions } from './utils';
 import videoshow from 'videoshow';
+import * as path from 'path';
+import * as fs from 'fs';
 
-import { toUTF8Array, bitsToSVG } from './utils';
+interface PrismOptions extends BitsToJPGOptions {
+    secondsPerFrame: number;
+};
 
-const MAX_SIZE = 1280 * 720;
+const PrismOptionDefaults: PrismOptions = { width: 1280, height: 720, bitWidth: 5, bitHeight: 5, quality: 100, secondsPerFrame: 3 };
 
-export default async function Prism(input: string) {
-    const outputPath = path.join(__dirname, md5(input));
+export default async function Prism(input: string, options: PrismOptions = PrismOptionDefaults): Promise<Buffer> {
+    if (options.width % options.bitWidth)
+        throw new Error('width must be a multiple of bitWidth');
+    if (options.height % options.bitHeight)
+        throw new Error('height must be a multiple of bitHeight');
 
-    const utf8array = toUTF8Array(input);
-    const input_bytes = Uint32Array.from(utf8array).buffer;
-    const input_uint8 = new Uint8Array(input_bytes);
+    const input_bits: Uint8Array = StringToBits(input);
+    const input_bits_length = input_bits.byteLength * 8;
 
-    if (input_uint8.byteLength * 8 > MAX_SIZE) {
-        throw new Error('Input is too large');
+    const max_screen_bits = (options.width / options.bitWidth) * (options.height / options.bitHeight) - 32;
+    const screen_count = Math.ceil(input_bits_length / max_screen_bits);
+
+    const images: string[] = [];
+    for(let i = 1; i <= screen_count; i++) {
+        const current_screen_bytes_length = (i === screen_count ? input_bits_length % max_screen_bits : max_screen_bits) / 8;
+        const current_screen_header = new Uint8Array(Uint32Array.from([0, i, 0, screen_count, 0, current_screen_bytes_length, 0, 0]).buffer);
+        const current_screen_body = input_bits.slice((i - 1) * max_screen_bits / 8, i * max_screen_bits / 8);
+        const current_screen_bits = Uint8Array.from(Buffer.concat([current_screen_header, current_screen_body]));
+
+        images.push(await BitsToJPG(current_screen_bits, options));
     }
 
-    const input_processed = bitsToSVG(input_uint8);
-    await sharp(Buffer.from(input_processed)).jpeg().toFile(outputPath + '.jpg');
-
-    videoshow.ffmpeg.setFfmpegPath(ffmpegPath);
-    const vs: EventEmitter = videoshow([outputPath + '.jpg'], {
-        fps: 1,
-        loop: 5,
-        transition: false,
-        videoBitrate: 10000,
-        videoCodec: 'libx264',
-        format: 'mp4',
-        pixelFormat: 'yuv420p',
-    }).save(outputPath + '.mp4');
-
     return new Promise((resolve, reject) => {
-        vs.on('error', reject);
-        vs.on('end', () => {
-            const buffer = fs.readFileSync(outputPath + '.mp4');
-            fs.unlinkSync(outputPath + '.jpg');
-            fs.unlinkSync(outputPath + '.mp4');
-            resolve(buffer);
-        });
+        videoshow(images, { fps: 1, loop: options.secondsPerFrame, videoBitrate: 100000, videoCodec: 'libx264', transition: false })
+            .save(path.join(__dirname, 'prism.mp4'))
+            .on('error', () => {
+                reject('Failed to create video');
+            })
+            .on('end', () => {
+                const prism = fs.readFileSync(path.join(__dirname, 'prism.mp4'));
+
+                fs.unlinkSync(path.join(__dirname, 'prism.mp4'));
+                images.forEach(image => fs.unlinkSync(image));
+
+                resolve(prism);
+            });
     });
 }

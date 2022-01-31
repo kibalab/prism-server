@@ -1,7 +1,7 @@
 const Prism = require('../dist').default;
+const fs = require('fs');
 
-(async () => {
-    const mp4 = await Prism("𫝀𫝁𫝂𫝃𫝄𫝅𫝆𫝇");
-    console.log(mp4);
-})();
-
+Prism(fs.readFileSync("./test/test.txt", "utf8")).then((res) => {
+    fs.writeFileSync("./test/test.mp4", res);
+})
+    

@@ -1,56 +1,46 @@
-export function toUTF8Array(str: string) {
-    const utf8: number[] = [];
-    for (let i = 0; i < str.length; i++) {
-        const charcode = str.charCodeAt(i);
-        utf8.push(charcode);
-    }
-    return utf8;
+import sharp from 'sharp';
+import md5 from 'md5';
+import * as path from 'path';
+
+export function StringToBits(str: string) {
+    return new Uint8Array(Uint16Array.from([...str].map(c => c.charCodeAt(0))).buffer);
 }
 
-export function rgbToRgba(pre_buffer: Uint8Array) {
-    const MAX_SIZE = 1280 * 720;
+export interface BitsToJPGOptions {
+    width: number;
+    height: number;
 
-    let buffer: Buffer;
+    bitWidth: number;
+    bitHeight: number;
 
-    if (pre_buffer.byteLength % 3) buffer = Buffer.concat([pre_buffer, Buffer.alloc(3 - pre_buffer.byteLength % 3, 0)]);
-    else buffer = Buffer.from(pre_buffer);
-
-    let rgba = new Uint8Array(buffer.length / 3 * 4);
-    for (let i = 0; i < buffer.length; i++) {
-        rgba[i * 4] = buffer[i * 3];
-        rgba[i * 4 + 1] = buffer[i * 3 + 1];
-        rgba[i * 4 + 2] = buffer[i * 3 + 2];
-        rgba[i * 4 + 3] = 255;
-    }
-
-    rgba = Buffer.concat([Buffer.from(rgba), Buffer.alloc(MAX_SIZE - rgba.length, 0)]);
-    return rgba;
+    quality: number;
 }
 
-export function bitsToSVG(bits: Uint8Array) {
-    let res = "<svg xmlns='http://www.w3.org/2000/svg' width='1280' height='720' viewBox='0 0 1280 720'>";
+const BitsToJPGOptionDefualts: BitsToJPGOptions = {
+    width: 1280,
+    height: 720,
+
+    bitWidth: 5,
+    bitHeight: 5,
+
+    quality: 100,
+};
+
+export async function BitsToJPG(bits: Uint8Array, options: BitsToJPGOptions = BitsToJPGOptionDefualts): Promise<string> {
+    if (bits.byteLength * 8 > options.width * options.height)
+        throw new Error('bits.byteLength * 8 must be less than width * height');
+
+    let res = `<svg xmlns='http://www.w3.org/2000/svg' width='${options.width}' height='${options.height}' viewBox='0 0 ${options.width} ${options.height}'>`;
 
     for (let i = 0; i < bits.byteLength * 8; i++) {
         if (bits[Math.floor(i / 8)] & (1 << (i % 8)))
-            res += `<rect x='${(i * 10) % 1280}' y='${Math.floor((i * 10) / 1280) * 10}' width='10' height='10' fill='white' />`;
+            res += `<rect x='${(i * options.bitWidth) % options.width}' y='${Math.floor((i * options.bitWidth) / options.width) * options.bitHeight}' width='${options.bitWidth}' height='${options.bitHeight}' fill='white' />`;
     }
 
     res += "</svg>";
-    return res;
-}
 
-export function getWH(size: number): { width: number, height: number } {
-    for(let i = Math.floor(Math.sqrt(size)); i >= 1; i--) {
-        if (size % i === 0) {
-            return {
-                width: i,
-                height: size / i
-            };
-        }
-    }
-
-    return {
-        width: size,
-        height: 1
-    };
+    const svg = Buffer.from(res);
+    await sharp(svg).jpeg({ quality: options.quality }).toFile(path.join(__dirname, `${md5(bits)}.jpg`));
+    
+    return path.join(__dirname, `${md5(bits)}.jpg`);
 }
