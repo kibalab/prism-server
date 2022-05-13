@@ -4,7 +4,7 @@ import * as Options from './options';
 
 const PrismOptionDefaults: Options.PrismOptions = { width: 1280, height: 720, bitWidth: 5, bitHeight: 5, quality: 100, secondsPerFrame: 3 };
 
-export default async function Prism(input: string, options: Options.PrismOptions = PrismOptionDefaults, pipe: Writable) {
+export default async function Prism(input: string, options: Options.PrismOptions = PrismOptionDefaults, pipe?: Writable) {
     if (options.width % options.bitWidth)
         throw new Error('width must be a multiple of bitWidth');
     if (options.height % options.bitHeight)
@@ -24,5 +24,5 @@ export default async function Prism(input: string, options: Options.PrismOptions
         return Utils.BitsToJPG(current_screen_bits, options);
     }));
 
-    Utils.writeToPipe(screens_buffer, pipe, options.secondsPerFrame);
+    Utils.writeToPipe(screens_buffer, options.secondsPerFrame, pipe);
 }

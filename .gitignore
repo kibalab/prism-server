@@ -4,6 +4,3 @@ node_modules
 # build result
 dist
 types
-
-# misc
-test/assets
