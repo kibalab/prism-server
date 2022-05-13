@@ -1,22 +1,17 @@
 import sharp from 'sharp';
-import md5 from 'md5';
-import * as path from 'path';
+import { Converter } from 'ffmpeg-stream';
+import { Readable, Writable } from 'stream';
 
-export function StringToBits(str: string) {
-    return new Uint8Array(Uint16Array.from([...str].map(c => c.charCodeAt(0))).buffer);
+import * as Options from './options';
+
+export function StringToBits(str: string): [Uint8Array, number] {
+    const bitsArray = new Uint8Array(Uint16Array.from([...str].map(c => c.charCodeAt(0))).buffer);
+    const bitsLength = bitsArray.byteLength * 8;
+    
+    return [bitsArray, bitsLength];
 }
 
-export interface BitsToJPGOptions {
-    width: number;
-    height: number;
-
-    bitWidth: number;
-    bitHeight: number;
-
-    quality: number;
-}
-
-const BitsToJPGOptionDefualts: BitsToJPGOptions = {
+const BitsToJPGOptionDefualts: Options.ImageOptions = {
     width: 1280,
     height: 720,
 
@@ -26,7 +21,7 @@ const BitsToJPGOptionDefualts: BitsToJPGOptions = {
     quality: 100,
 };
 
-export async function BitsToJPG(bits: Uint8Array, options: BitsToJPGOptions = BitsToJPGOptionDefualts): Promise<string> {
+export async function BitsToJPG(bits: Uint8Array, options: Options.ImageOptions = BitsToJPGOptionDefualts): Promise<Buffer> {
     if (bits.byteLength * 8 > options.width * options.height)
         throw new Error('bits.byteLength * 8 must be less than width * height');
 
@@ -40,7 +35,35 @@ export async function BitsToJPG(bits: Uint8Array, options: BitsToJPGOptions = Bi
     res += "</svg>";
 
     const svg = Buffer.from(res);
-    await sharp(svg).jpeg({ quality: options.quality }).toFile(path.join(__dirname, `${md5(bits)}.jpg`));
-    
-    return path.join(__dirname, `${md5(bits)}.jpg`);
+    return sharp(svg)
+        .flatten({ background: { r: 0, g: 0, b: 0 }})
+        .png({ quality: options.quality })
+        .toBuffer();
+}
+
+export function writeToPipe(data: Buffer[], pipe: Writable, secondsPerFrame: number) {
+    const converter = new Converter();
+    const converterInput = converter.createInputStream({
+        f: 'image2pipe',
+        framerate: `${1 / secondsPerFrame}`,
+    });
+
+    data.map((screen_buffer) => () =>
+        new Promise((fulfill, reject) =>
+            Readable.from(screen_buffer)
+                .on('error', reject)
+                .on('end', fulfill)
+                .pipe(converterInput)
+        ))
+        .reduce((prev, curr) => prev.then(curr), Promise.resolve())
+        .then(() => converterInput.end());
+
+    converter.createOutputStream({
+        vcodec: 'libx264',
+        pix_fmt: 'yuv420p',
+        f: 'mp4',
+        movflags: 'frag_keyframe+empty_moov'
+    }).pipe(pipe);
+
+    converter.run();
 }
