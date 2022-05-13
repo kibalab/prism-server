@@ -11,6 +11,6 @@ describe("Prism", () => {
             bitHeight: 5,
             quality: 100,
             secondsPerFrame: 5,
-        }, fs.createWriteStream(path.join(__dirname, "/assets/test.mp4")));
+        });
     })
 })

@@ -41,7 +41,7 @@ export async function BitsToJPG(bits: Uint8Array, options: Options.ImageOptions 
         .toBuffer();
 }
 
-export function writeToPipe(data: Buffer[], pipe: Writable, secondsPerFrame: number) {
+export function writeToPipe(data: Buffer[], secondsPerFrame: number, pipe?: Writable) {
     const converter = new Converter();
     const converterInput = converter.createInputStream({
         f: 'image2pipe',
@@ -58,12 +58,14 @@ export function writeToPipe(data: Buffer[], pipe: Writable, secondsPerFrame: num
         .reduce((prev, curr) => prev.then(curr), Promise.resolve())
         .then(() => converterInput.end());
 
-    converter.createOutputStream({
+    const converterOutput = converter.createOutputStream({
         vcodec: 'libx264',
         pix_fmt: 'yuv420p',
         f: 'mp4',
         movflags: 'frag_keyframe+empty_moov'
-    }).pipe(pipe);
+    });
+    if (pipe)
+        converterOutput.pipe(pipe);
 
     converter.run();
 }
